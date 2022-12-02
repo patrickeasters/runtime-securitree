@@ -1,0 +1,6 @@
+wled:
+  host: http://1.2.3.4
+  stripLength: 50
+  brightness: 255
+aws:
+  sqsQueueURL: https://sqs.us-east-1.amazonaws.com/123456789012/securitree
