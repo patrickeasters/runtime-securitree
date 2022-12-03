@@ -22,7 +22,7 @@ func NewQueue(sess *session.Session, url string) Queue {
 	}
 }
 
-func (q Queue) Poll(handler func(string) error) {
+func (q Queue) Poll(handler func(string) error) error {
 
 	output, err := q.sqsSvc.ReceiveMessage(&sqs.ReceiveMessageInput{
 		QueueUrl:            aws.String(q.QueueURL),
@@ -31,23 +31,26 @@ func (q Queue) Poll(handler func(string) error) {
 	})
 
 	if err != nil {
-		fmt.Printf("Failed to fetch sqs message %s", err)
+		return fmt.Errorf("failed to fetch sqs message: %w", err)
 	}
 
 	for _, msg := range output.Messages {
 		err := handler(*msg.Body)
 		if err != nil {
-			fmt.Printf("Failed to handle sqs message %s", err)
-			continue
+			return fmt.Errorf("failed to handle sqs message: %w", err)
 		}
-		q.deleteMessage(msg)
+		err = q.deleteMessage(msg)
+		if err != nil {
+			return fmt.Errorf("failed to delete sqs message: %w", err)
+		}
 	}
-
+	return nil
 }
 
-func (q Queue) deleteMessage(msg *sqs.Message) {
-	q.sqsSvc.DeleteMessage(&sqs.DeleteMessageInput{
+func (q Queue) deleteMessage(msg *sqs.Message) error {
+	_, err := q.sqsSvc.DeleteMessage(&sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(q.QueueURL),
 		ReceiptHandle: msg.ReceiptHandle,
 	})
+	return err
 }

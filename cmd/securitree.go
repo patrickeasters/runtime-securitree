@@ -1,7 +1,12 @@
 package main
 
 import (
+	"log"
+	"strings"
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 
 	"github.com/patrickeasters/runtime-securitree/decorator"
@@ -11,11 +16,13 @@ import (
 
 func main() {
 	// read config
-	viper.SetConfigName("config")            // name of config file (without extension)
-	viper.AddConfigPath("/etc/securitree/")  // path to look for the config file in
-	viper.AddConfigPath("$HOME/.securitree") // call multiple times to add many search paths
-	viper.AddConfigPath(".")                 // optionally look for config in the working directory
+	viper.SetConfigName("config")
+	viper.AddConfigPath("/etc/securitree/")
+	viper.AddConfigPath("$HOME/.securitree")
+	viper.AddConfigPath(".")
 	viper.SetEnvPrefix("TREE")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
 	viper.ReadInConfig()
 
 	// setup SQS client
@@ -36,9 +43,17 @@ func main() {
 	wledClient.SetLEDs(dec.Brightness, dec.LEDState)
 
 	// start listening to queue
+	b := backoff.NewExponentialBackOff()
+	notify := func(err error, d time.Duration) {
+		log.Printf("Encountered error: %s. Retrying in %s", err, d)
+	}
 	for {
-		q.Poll(dec.MessageHandler)
-		wledClient.SetLEDs(dec.Brightness, dec.LEDState)
+		backoff.RetryNotify(func() error {
+			return q.Poll(dec.MessageHandler)
+		}, b, notify)
+		backoff.RetryNotify(func() error {
+			return wledClient.SetLEDs(dec.Brightness, dec.LEDState)
+		}, b, notify)
 	}
 
 }
